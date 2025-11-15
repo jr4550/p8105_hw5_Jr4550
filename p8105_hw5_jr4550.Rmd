@@ -1,0 +1,126 @@
+---
+title: "p8105_hw5_JR4550"
+author: "Jeff Remo"
+date: "2025-11-15"
+output: github_document
+---
+## set up environment 
+```{r, message = FALSE}
+library(tidyverse)
+library(rvest)
+library(broom)
+library(purrr)
+```
+
+## Problem 2
+Create function
+```{r}
+set.seed(1)
+
+sim_t_test = function(n = 30, mu, sigma = 5) {
+  x = rnorm(n, mean = mu, sd = sigma)
+    test_result = t.test(x, mu = 0) %>%
+    tidy() %>%
+    select(estimate, p.value)
+  
+  test_result
+}
+```
+
+#### Simulation for mu 
+```{r}
+sim_results_all = 
+  tibble(
+    true_mu = c(0:6)
+  ) %>%
+  mutate(
+    results = map(true_mu, ~rerun(5000, sim_t_test(mu = .x)))
+  ) %>%
+  unnest(results) %>%
+  mutate(
+    iteration = rep(1:5000, times = 7)
+  ) %>%
+  unnest(results)
+
+power_results = 
+  sim_results_all %>%
+  group_by(true_mu) %>%
+  summarize(
+    power = mean(p.value < 0.05)
+  )
+```
+
+#### Plot 1 Power Results 
+```{r}
+power_results %>%
+  ggplot(aes(x = true_mu, y = power)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Power of One-Sample t-Test vs Effect Size",
+    x = "True Value of μ",
+    y = "Power (Proportion of Times Null Rejected)"
+  ) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1))
+
+avg_estimates = 
+  sim_results_all %>%
+  group_by(true_mu) %>%
+  summarize(
+    avg_estimate_all = mean(estimate),
+    avg_estimate_rejected = mean(estimate[p.value < 0.05])
+  )
+```
+#### Association of Size and Power: 
+The plot shows a strong positive link between effect size and power. When μ = 0 (no effect), power is about 0.05, the same as α (the Type I error rate). As the effect size gets bigger, power goes up quickly. When μ = 4, power is close to 1, so we almost always find the true effect. This means it’s easier to spot larger effect sizes with the same sample size and variance.
+
+
+
+#### Plot 2 All samples
+```{r}
+p1 = avg_estimates %>%
+  ggplot(aes(x = true_mu, y = avg_estimate_all)) +
+  geom_line() +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(
+    title = "Average Estimate of μ̂ (All Samples)",
+    x = "True Value of μ",
+    y = "Average Estimate of μ̂"
+  ) +
+  theme_minimal()
+```
+
+# Plot 3: Rejected null only
+```{r}
+p2 = avg_estimates %>%
+  ggplot(aes(x = true_mu, y = avg_estimate_rejected)) +
+  geom_line() +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(
+    title = "Average Estimate of μ̂ (Rejected Null Only)",
+    x = "True Value of μ",
+    y = "Average Estimate of μ̂"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+library(patchwork)
+p1 / p2
+
+print("Power by True μ:")
+print(power_results)
+
+print("\nAverage Estimates:")
+print(avg_estimates)
+```
+#### Is the sample average of 𝜇̂ across tests for which the null is rejected approximately equal to the true value of 𝜇? Why or why not?
+
+No, not always. When considering all samples, the average estimate equals the true μ because μ̂ is unbiased. However, among only the samples where the null was rejected, the average estimate is larger than the true μ for small effect sizes. This happens because when power is low, we only reject the null when we get unusually large sample estimates, creating selection bias. As the true effect size increases and power approaches 1, this bias disappears because we reject the null in nearly all samples.
+
+
+#### Problem 3
