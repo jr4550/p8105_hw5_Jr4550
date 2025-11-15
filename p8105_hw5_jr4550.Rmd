@@ -123,4 +123,88 @@ print(avg_estimates)
 No, not always. When considering all samples, the average estimate equals the true μ because μ̂ is unbiased. However, among only the samples where the null was rejected, the average estimate is larger than the true μ for small effect sizes. This happens because when power is low, we only reject the null when we get unusually large sample estimates, creating selection bias. As the true effect size increases and power approaches 1, this bias disappears because we reject the null in nearly all samples.
 
 
-#### Problem 3
+## Problem 3
+Load and Describe data 
+```{r}
+homicide_df =
+  read_csv("data/homicide-data.csv", na = c("NA", ".", "")) |> 
+  janitor::clean_names()
+
+glimpse(homicide_df)
+```
+The homicide dataset contains 52,179 observations and 12 variables documenting homicide cases across 50 U.S. cities. Each row represents a single homicide case with a unique identifier (uid). Key variables include the reported date of the incident, victim demographics (name, race, age, and sex), geographic information (city, state, lat, and long), and case dispo indicating whether the case was closed by arrest, closed without arrest, or remains open with no arrest.
+
+```{r}
+homicide_summary = 
+  homicide_df%>%
+  mutate(
+    city_state = str_c(city, ", ", state)
+  ) %>%
+  group_by(city_state) %>%
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+  )
+
+homicide_summary
+```
+
+Prop test for Baltimore, MD
+```{r}
+baltimore_data = 
+  homicide_summary %>%
+  filter(city_state == "Baltimore, MD")
+
+baltimore_prop_test = 
+  prop.test(
+    x = baltimore_data %>% pull(unsolved_homicides),
+    n = baltimore_data %>% pull(total_homicides)
+  )
+baltimore_tidy = 
+  broom::tidy(baltimore_prop_test)
+
+baltimore_result = 
+  baltimore_tidy %>%
+  select(estimate, conf.low, conf.high)
+
+baltimore_result
+```
+
+Prop test all cities
+```{r}
+all_cities_test = 
+  homicide_summary %>%
+  mutate(
+    prop_test_result = purrr::map2(
+      unsolved_homicides, 
+      total_homicides,
+      ~prop.test(.x, .y) %>% broom::tidy()
+    )
+  ) %>%
+  unnest(prop_test_result) %>%
+  select(city_state, estimate, conf.low, conf.high)
+
+all_cities_test
+```
+
+Unsolved Homicides plot 
+```{r}
+all_cities_test %>%
+  mutate(
+    city_state = fct_reorder(city_state, estimate)
+  ) %>%
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  coord_flip() +
+  labs(
+    title = "Proportion of Unsolved Homicides by City",
+    x = "City",
+    y = "Proportion of Unsolved Homicides",
+    caption = "Error bars represent 95% confidence intervals"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
